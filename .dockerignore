@@ -1,0 +1,9 @@
+.data
+.env
+.logs
+.playwright
+.playwright-cli
+bin
+node_modules
+frontend/dist/*
+!frontend/dist/.gitkeep

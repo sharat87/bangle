@@ -1,0 +1,28 @@
+# Build artifacts
+bin/
+frontend/dist/*
+!frontend/dist/.gitkeep
+.logs/
+
+# Local data (the dev DB holds real upstream tokens once milestone 1 lands)
+.data/
+
+# Dependencies
+node_modules/
+.pnpm-store
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+
+# Playwright artifacts
+.playwright/
+.playwright-cli/

@@ -1,0 +1,636 @@
+/*
+ * The whole design system. Colours are tokens and work in light and dark
+ * through light-dark(); never write a raw colour outside :root. Elements are
+ * styled as elements; the only classes are the utilities listed here:
+ *
+ *   .shell   the viewport-filling layout: .sidebar (brand, nav, .foot) and
+ *            main (its .page holds the content), each scrolling on its own
+ *   .muted   secondary text
+ *   .small   smaller text
+ *   .error   failure text
+ *   .ok      success text (a connected server)
+ *   .num     a table cell holding a number, right-aligned
+ *   .list    a plain list of entries, spaced, without bullets
+ *   .stack   a form whose fields sit one under another; a <details> in one
+ *            holds optional fields, in a nested .stack
+ *   .big     a form's main field, in larger text (same height as any control)
+ *   .row     things side by side, wrapping; .spread pushes them apart
+ *   .button  a link that looks like a button (it navigates, so it is an <a>)
+ *   .quiet   a secondary button
+ *   .danger  a destructive button
+ *   .foot    the footer, at the bottom of the sidebar
+ *   .under-title  the button row right under a page's <h1>
+ *   .tools, .tool-head, a.tool-name, a.try-it, .tool-signature,
+ *            .tool-description  a server's tool list; .tool-param is one parameter, its name in
+ *            .tool-param-name
+ *   .md      rendered markdown (markdown.jsx)
+ *   label.inline  a radio or checkbox with its text, on one line
+ *   .choices  a column of checkboxes
+ *   .field-help  a form field's markdown description, under it
+ *   .options  a .row of radios: wider gaps, so each label stays with its dot
+ *   .command  a command line with its copy button
+ *   pre.json  highlighted JSON (json.jsx): .j-key, .j-string, .j-number,
+ *             .j-literal
+ *
+ * Every button has an icon (lucide-preact). Every control is
+ * --control-height tall, so a row of them lines up whatever they contain.
+ *
+ * A <table> is for a list of records with the same fields, like servers.
+ * A row that opens a page is tr.linked: its a.row-link is the one real link,
+ * stretched over the whole row by ::after, so anywhere in the row opens it
+ * and it is still a link (cmd-click, hover URL). td.row-actions sits above
+ * the stretch, so its buttons stay clickable.
+ */
+
+:root {
+	color-scheme: light dark;
+	--bg: light-dark(#ffffff, #16181d);
+	--fg: light-dark(#1d2024, #e6e8eb);
+	--muted: light-dark(#5f6670, #9aa1ab);
+	--error: light-dark(#b42318, #f97066);
+	--accent: light-dark(#6d28d9, #a78bfa);
+	--ok: light-dark(#067647, #47cd89);
+	--border: light-dark(#d0d5dd, #3a3f47);
+	--field: light-dark(#ffffff, #1f2228);
+	--hover: light-dark(#f6f4fe, #1d2027);
+	--json-key: light-dark(#6d28d9, #c4b5fd);
+	--json-string: light-dark(#067647, #75e0a7);
+	--json-number: light-dark(#b54708, #fdb022);
+	--json-literal: light-dark(#175cd3, #84caff);
+
+	/* Every control (button, .button link, input) is exactly this tall,
+	   whatever is inside it: icon only, icon and text, or text. Height is
+	   never derived from content, so controls side by side always line up. */
+	--control-height: 2.25rem;
+
+	font-family: system-ui, -apple-system, sans-serif;
+	line-height: 1.5;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--fg);
+}
+
+/* The sidebar and main each have their own scrollbar; the page itself never
+   scrolls. Below 48rem the sidebar becomes a top bar and the page scrolls
+   as a whole again. */
+.shell {
+	display: flex;
+	height: 100vh;
+	height: 100dvh;
+}
+
+.sidebar {
+	flex: 0 0 13rem;
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+	padding: 1rem 0.75rem;
+	border-right: 1px solid var(--border);
+	overflow-y: auto;
+}
+
+.sidebar a {
+	color: var(--muted);
+	text-decoration: none;
+}
+
+.sidebar a.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	padding: 0 0.5rem;
+	font-weight: 600;
+	font-size: 1.1rem;
+	color: var(--fg);
+}
+
+.sidebar nav {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+/* The nav's sections, each under a small heading (MCP). */
+.sidebar nav section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.sidebar nav h2 {
+	margin: 0.75rem 0 0.15rem;
+	padding: 0 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.sidebar nav a {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 0.4rem 0.5rem;
+	border-radius: 6px;
+}
+
+.sidebar nav a:hover {
+	color: var(--fg);
+	background: var(--hover);
+}
+
+.sidebar nav a[aria-current="page"] {
+	color: var(--accent);
+	background: var(--hover);
+	font-weight: 500;
+}
+
+main {
+	flex: 1;
+	min-width: 0;
+	overflow-y: auto;
+}
+
+.page {
+	max-width: 56rem;
+	padding: 1.5rem 2rem 3rem;
+}
+
+@media (max-width: 48rem) {
+	.shell {
+		display: block;
+		height: auto;
+	}
+
+	.sidebar {
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+		padding: 0.6rem 1rem;
+		border-right: none;
+		border-bottom: 1px solid var(--border);
+		overflow: visible;
+	}
+
+	.sidebar nav,
+	.sidebar nav section {
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+
+	.sidebar nav h2 {
+		margin: 0 0 0 0.5rem;
+	}
+
+	.sidebar .foot {
+		flex: 1 0 100%;
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 0.25rem 1rem;
+		margin-top: 0;
+		padding: 0;
+		border-top: none;
+	}
+
+	main {
+		overflow: visible;
+	}
+
+	.page {
+		padding: 1.5rem 1rem;
+	}
+}
+
+h1 {
+	margin: 0;
+	font-size: 1.5rem;
+}
+
+h2 {
+	margin: 2rem 0 0.5rem;
+	font-size: 1.1rem;
+}
+
+a {
+	color: var(--accent);
+}
+
+.muted {
+	color: var(--muted);
+}
+
+.error {
+	color: var(--error);
+}
+
+/* A named family list, not bare "monospace": browsers shrink bare monospace
+   to 13px, which made tool names smaller than the text around them. */
+code,
+pre {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 0.9em;
+}
+
+/* The footer sits at the bottom of the sidebar. */
+.foot {
+	margin-top: auto;
+	padding: 0.75rem 0.5rem 0;
+	border-top: 1px solid var(--border);
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+/* A subtitle may end in a button (the group's endpoint and its copy
+   button): flex keeps the text centred against it. */
+.title-sub {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	margin: 0.25rem 0 0;
+	overflow-wrap: anywhere;
+}
+
+.under-title {
+	margin: 0.75rem 0 1rem;
+}
+
+.tools {
+	gap: 1.25rem;
+}
+
+/* A tool's name links to its page, where it can be called. */
+a.tool-name {
+	color: var(--fg);
+	text-decoration: none;
+}
+
+a.tool-name:hover {
+	color: var(--accent);
+	text-decoration: underline;
+}
+
+/* The name, then "Try it": the same link, but one that looks like one. */
+.tool-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.75rem;
+}
+
+a.try-it {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+a.try-it:hover {
+	text-decoration: underline;
+}
+
+.tool-name code {
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.tool-signature {
+	display: block;
+	margin-top: 0.15rem;
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+
+.tool-param[title] {
+	cursor: help;
+}
+
+.tool-param-name {
+	color: var(--fg);
+}
+
+.tool-description {
+	margin-top: 0.25rem;
+	color: var(--muted);
+	font-size: 0.9rem;
+	overflow-wrap: anywhere;
+}
+
+.tool-description summary,
+.field-help summary {
+	cursor: pointer;
+	color: var(--accent);
+}
+
+.md p,
+.md ul,
+.md ol,
+.md pre {
+	margin: 0.25rem 0;
+}
+
+.md ul,
+.md ol {
+	padding-left: 1.25rem;
+}
+
+pre.json,
+pre.text {
+	margin: 0.25rem 0 0.75rem;
+	padding: 0.6rem;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-size: 0.85rem;
+}
+
+.j-key {
+	color: var(--json-key);
+}
+
+.j-string {
+	color: var(--json-string);
+}
+
+.j-number {
+	color: var(--json-number);
+}
+
+.j-literal {
+	color: var(--json-literal);
+}
+
+h1 code.title-code {
+	font-size: 1.3rem;
+}
+
+.md pre {
+	padding: 0.5rem;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+}
+
+.ok {
+	color: var(--ok);
+}
+
+.list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+form {
+	margin: 0;
+}
+
+.stack {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+/* A stacked label is a block: its title text runs inline (so a trailing
+   "(optional)" stays on the title's line), and its field and hint each take
+   a line below. A flex column here made every text run its own row. */
+.stack label {
+	display: block;
+}
+
+.stack label > input:not([type="radio"]):not([type="checkbox"]),
+.stack label > textarea,
+.stack label > .small {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	margin-top: 0.25rem;
+}
+
+.stack details > summary {
+	cursor: pointer;
+}
+
+.stack details > .stack {
+	margin-top: 1rem;
+}
+
+input.big {
+	font-size: 1.125rem;
+}
+
+.stack label.inline > .small {
+	display: inline;
+	width: auto;
+	margin-top: 0;
+}
+
+.row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.spread {
+	justify-content: space-between;
+	margin-bottom: 1rem;
+}
+
+.small {
+	font-size: 0.85rem;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+th,
+td {
+	text-align: left;
+	vertical-align: middle;
+	padding: 0.6rem 0.75rem;
+	border-bottom: 1px solid var(--border);
+}
+
+tr.linked {
+	position: relative;
+}
+
+tr.linked {
+	cursor: pointer;
+}
+
+tr.linked:hover {
+	background: var(--hover);
+}
+
+/* The row is the target, so its link reads as the row's name, not as a
+   link of its own. */
+tr.linked a.row-link {
+	color: var(--fg);
+	font-weight: 500;
+	text-decoration: none;
+}
+
+tr.linked a.row-link::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+}
+
+tr.linked td.row-actions {
+	position: relative;
+	z-index: 1;
+}
+
+th {
+	font-weight: 600;
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+
+textarea {
+	font: inherit;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	padding: 0.5rem;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--field);
+	color: var(--fg);
+}
+
+fieldset {
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+legend {
+	padding: 0;
+	margin-bottom: 0.35rem;
+}
+
+label.inline,
+.stack label.inline {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.4rem;
+}
+
+/* Radios and checkboxes are not text fields: they keep their own size.
+   accent-color tints the native control (the check, the dot) violet. They
+   are sized, not scaled, so layout makes room: 1rem is about 1.2x the
+   browsers' 13px default. */
+input[type="radio"],
+input[type="checkbox"] {
+	width: 1rem;
+	height: 1rem;
+	margin: 0;
+	accent-color: var(--accent);
+}
+
+.field-help {
+	margin-top: 0.25rem;
+}
+
+.field-help .md > :first-child {
+	margin-top: 0;
+}
+
+.field-help .md > :last-child {
+	margin-bottom: 0;
+}
+
+.row.options {
+	column-gap: 1.25rem;
+}
+
+.choices {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.command code {
+	padding: 0.5rem 0.6rem;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	overflow-wrap: anywhere;
+}
+
+input {
+	box-sizing: border-box;
+	height: var(--control-height);
+	font: inherit;
+	padding: 0 0.5rem;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--field);
+	color: var(--fg);
+}
+
+button,
+.button {
+	box-sizing: border-box;
+	height: var(--control-height);
+	min-width: var(--control-height); /* never narrower than tall */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.35rem;
+	text-decoration: none;
+	font: inherit;
+	line-height: 1;
+	white-space: nowrap;
+	padding: 0 0.75rem;
+	border: 1px solid var(--accent);
+	border-radius: 4px;
+	background: var(--accent);
+	color: var(--bg);
+	cursor: pointer;
+}
+
+button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+button svg,
+.button svg {
+	flex-shrink: 0;
+}
+
+button.quiet {
+	border-color: var(--border);
+	background: transparent;
+	color: var(--fg);
+}
+
+button.danger {
+	border-color: var(--error);
+	background: transparent;
+	color: var(--error);
+}
+
+th.num,
+td.num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
