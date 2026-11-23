@@ -339,6 +339,9 @@ are the keys to my Linear/Notion/Railway accounts.
   with per-platform binaries were set up and dropped on 2026-11-22.)
 - **The image** (`Dockerfile`): its runtime is Alpine with CA certificates and the static binary
   (about 30 MB); it runs as `bangle` (uid 1000), with the DB in `/data`.
+  The frontend and Go stages run on the build machine's platform and Go cross-compiles, so the
+  arm64 image needs no emulated build (it took 15 minutes under QEMU); only the runtime stage's
+  `apk add` is emulated.
 - **A container's loopback isn't the host's,** so the image runs `-listen 0.0.0.0:7060`. That's the
   one exception to loopback-only: `cmd/server` accepts every interface (0.0.0.0, ::, an empty host)
   when asked, with a loud warning, and still refuses a specific non-loopback address. It's safe

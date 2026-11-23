@@ -8,8 +8,13 @@
 # again. Bangle has no logins of its own, so a port published on anything but
 # 127.0.0.1 hands every stored login to whoever can reach it.
 
+# The frontend and the binary are built on the build machine's own platform
+# ($BUILDPLATFORM), never emulated: the bundle is platform-independent, and
+# Go cross-compiles (pure Go, CGO off). Only the runtime stage below runs as
+# the target platform, and its one RUN is quick under emulation.
+
 # The frontend bundle, embedded by the Go build below.
-FROM node:24-bookworm-slim AS frontend
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS frontend
 WORKDIR /src
 RUN corepack enable && corepack prepare pnpm@10.30.0 --activate
 COPY package.json pnpm-lock.yaml ./
@@ -18,13 +23,14 @@ COPY build.mjs ./
 COPY frontend ./frontend
 RUN node build.mjs
 
-FROM golang:1.27-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
+ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /src/frontend/dist ./frontend/dist
-RUN CGO_ENABLED=0 go build -trimpath -o /out/bangle ./cmd/server
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/bangle ./cmd/server
 
 # The runtime is the static binary and CA certificates (every upstream is
 # https), running as an unprivileged user with the DB in /data.
