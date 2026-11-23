@@ -1,10 +1,10 @@
-import { Plug, Plus, RefreshCw, Save, Search, Trash2, Unplug } from "lucide-preact"
+import { Plug, Plus, RefreshCw, Save, Trash2, Unplug } from "lucide-preact"
 import { useEffect, useRef, useState } from "preact/hooks"
 import { api, useFetched } from "./api"
 import { groupPath, iconSize, NameHeader, serverPath, ToolItems } from "./common"
 
 // A server is internal/server/servers.go's serverJSON: name, url, scopes,
-// client_id, has_client_secret, status ("connected" | "needs_login" |
+// status ("connected" | "needs_login" |
 // "error"), error, logged_in, token_expires_at, refreshable. A tool is
 // upstream_pool.go's toolJSON: name, title, description, inputSchema.
 // A tool's own page, where it can be called, is toolcall.jsx.
@@ -171,38 +171,19 @@ export function AddServerPage() {
 	const [name, setName] = useState("")
 	const [url, setURL] = useState("")
 	const [scopes, setScopes] = useState("")
-	const [clientID, setClientID] = useState("")
-	const [clientSecret, setClientSecret] = useState("")
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState(null)
-	// The last URL lookup (lookup.go): null before one, else
-	// {state: "loading"} | {state: "failed", error} | {state: "loaded", name, data}.
-	const [lookup, setLookup] = useState(null)
-	// Whether lookup is on: CONTEXT7_API_KEY is optional.
-	const [health] = useFetched("/api/health")
 	// Focus from an effect: the autofocus attribute is only honoured for
 	// markup present when the page loads, not for what Preact renders after.
 	const nameInput = useRef(null)
 	useEffect(() => nameInput.current.focus(), [])
-
-	async function findURL() {
-		const asked = name
-		setLookup({ state: "loading" })
-		try {
-			const data = await api(`/api/lookup?name=${encodeURIComponent(asked)}`)
-			setLookup({ state: "loaded", name: asked, data })
-			if (data.candidates.length > 0) setURL(data.candidates[0].url)
-		} catch (err) {
-			setLookup({ state: "failed", error: err.message })
-		}
-	}
 
 	async function submit(e) {
 		e.preventDefault()
 		setBusy(true)
 		setError(null)
 		try {
-			const body = { name, url, scopes, client_id: clientID, client_secret: clientSecret }
+			const body = { name, url, scopes }
 			const created = await api("/api/servers", { method: "POST", body: JSON.stringify(body) })
 			location.assign(serverPath(created.name))
 		} catch (err) {
@@ -240,11 +221,9 @@ export function AddServerPage() {
 						onInput={(e) => setURL(e.currentTarget.value)}
 					/>
 				</label>
-				<FindURL health={health} name={name} lookup={lookup} findURL={findURL} />
-				<LookupResult lookup={lookup} url={url} setURL={setURL} />
 				<details>
 					<summary>
-						Scopes and client <span class="muted">(optional)</span>
+						Scopes <span class="muted">(optional)</span>
 					</summary>
 					<div class="stack">
 						<label>
@@ -258,27 +237,6 @@ export function AddServerPage() {
 								Space-separated. offline_access is added whenever the authorization server offers it.
 							</span>
 						</label>
-						<label>
-							Client ID
-							<input
-								placeholder="dynamic registration"
-								value={clientID}
-								onInput={(e) => setClientID(e.currentTarget.value)}
-							/>
-							<span class="muted small">
-								Only for a provider without dynamic client registration. Register the redirect URI{" "}
-								<code>{location.origin}/oauth/upstream/callback</code>.
-							</span>
-						</label>
-						<label>
-							Client secret
-							<input
-								type="password"
-								autocomplete="off"
-								value={clientSecret}
-								onInput={(e) => setClientSecret(e.currentTarget.value)}
-							/>
-						</label>
 					</div>
 				</details>
 				<div class="row">
@@ -290,64 +248,6 @@ export function AddServerPage() {
 				{error && <p class="error">{error}</p>}
 			</form>
 		</>
-	)
-}
-
-// FindURL is the Add page's "Find the URL" button, offered only when the
-// server has a Context7 key (/api/health's lookup).
-function FindURL({ health, name, lookup, findURL }) {
-	if (health.state === "loading") return null
-	if (health.state === "failed") return <p class="error">Couldn't check whether lookup is on: {health.error}</p>
-	if (!health.data.lookup) return null
-	return (
-		<div class="row">
-			<button type="button" class="quiet" disabled={!name || lookup?.state === "loading"} onClick={findURL}>
-				<Search size={iconSize} />{" "}
-				{lookup?.state === "loading" ? "Looking up…" : `Find the URL for “${name || "name"}”`}
-			</button>
-			<span class="muted small">Searches vendors' docs through Context7.</span>
-		</div>
-	)
-}
-
-// LookupResult shows a lookup's candidates as radio buttons that set the URL
-// field. Every one has passed Connect's discovery; whether it is the vendor's
-// own server is for me to judge from its domain and its docs page.
-function LookupResult({ lookup, url, setURL }) {
-	if (!lookup || lookup.state === "loading") return null
-	if (lookup.state === "failed") return <p class="error">{lookup.error}</p>
-	const { candidates, checked } = lookup.data
-	if (candidates.length === 0) {
-		return (
-			<p class="muted">
-				No URL in the docs for “{lookup.name}” answers as an OAuth MCP server ({checked} checked). Enter it yourself.
-			</p>
-		)
-	}
-	return (
-		<fieldset class="choices">
-			<legend>Found for “{lookup.name}”</legend>
-			{candidates.map((c) => (
-				<label class="inline" key={c.url}>
-					<input type="radio" name="candidate" checked={url === c.url} onChange={() => setURL(c.url)} />
-					<span>
-						<code>{c.url}</code>{" "}
-						<span class={c.verified ? "muted small" : "error small"}>
-							{c.verified ? "on the docs' own domain" : "not on the docs' domain: check it's the vendor's"}
-							{" · from "}
-							{c.sources.map((src, i) => (
-								<span key={src}>
-									{i > 0 && ", "}
-									<a href={src} target="_blank" rel="noreferrer">
-										{src.replace(/^https:\/\//, "")}
-									</a>
-								</span>
-							))}
-						</span>
-					</span>
-				</label>
-			))}
-		</fieldset>
 	)
 }
 
@@ -417,16 +317,6 @@ function ServerDetail({ server, reload }) {
 			<p>
 				Scopes:{" "}
 				{server.scopes ? <code>{server.scopes}</code> : <span class="muted">the server's own list</span>}
-				<br />
-				Client:{" "}
-				{server.client_id ? (
-					<>
-						<code>{server.client_id}</code>
-						{server.has_client_secret && <span class="muted"> (with a secret)</span>}
-					</>
-				) : (
-					<span class="muted">dynamic registration</span>
-				)}
 			</p>
 		</>
 	)

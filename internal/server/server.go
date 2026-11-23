@@ -30,11 +30,6 @@ type Server struct {
 	static   http.FileSystem
 	box      *SecretBox
 	build    Build
-	// context7Key is CONTEXT7_API_KEY, for looking up servers' URLs
-	// (lookup.go), empty when that's off; context7URL is Context7's search endpoint, replaced in
-	// tests.
-	context7Key string
-	context7URL string
 	// upstream carries all traffic to upstream servers and their
 	// authorization servers. It has no Timeout: MCP streams stay open, so
 	// each call bounds itself with a context.
@@ -70,8 +65,8 @@ func (b Build) String() string {
 }
 
 // New takes BASE_URL (a bare origin), the static filesystem from frontend.FS,
-// the SECRETS_KEY box and CONTEXT7_API_KEY; cmd/server validates them first.
-func New(database *sql.DB, listenAddr string, baseURL *url.URL, static http.FileSystem, box *SecretBox, context7Key string, build Build) *Server {
+// and the SECRETS_KEY box; cmd/server validates them first.
+func New(database *sql.DB, listenAddr string, baseURL *url.URL, static http.FileSystem, box *SecretBox, build Build) *Server {
 	return &Server{
 		db:           database,
 		listenAddr:   listenAddr,
@@ -80,8 +75,6 @@ func New(database *sql.DB, listenAddr string, baseURL *url.URL, static http.File
 		static:       static,
 		box:          box,
 		build:        build,
-		context7Key:  context7Key,
-		context7URL:  context7SearchURL,
 		upstream:     &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()},
 		flows:        &pendingFlows{flows: map[string]pendingFlow{}},
 		pool:         newUpstreamPool(),
@@ -122,13 +115,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case r.URL.Path == "/api/health":
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "build": s.build, "lookup": s.context7Key != ""})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "build": s.build})
 	case r.URL.Path == "/api/servers":
 		s.handleServers(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/servers/"):
 		s.handleServer(w, r, strings.TrimPrefix(r.URL.Path, "/api/servers/"))
-	case r.URL.Path == "/api/lookup":
-		s.handleLookup(w, r)
 	case r.URL.Path == "/api/groups":
 		s.handleGroups(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/groups/"):

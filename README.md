@@ -5,7 +5,7 @@ A local MCP gateway for one person's machine.
 Log in to Linear, Notion, PostHog, Railway and other remote MCP servers once, in Bangle. Put them in
 **groups**, say one per project, and point each agent harness (Claude Code, Codex, Pi, …) at its
 group's endpoint instead of re-authorizing every server in every harness. Remote servers only, for now:
-streamable HTTP with an OAuth login.
+streamable HTTP with an OAuth login and dynamic client registration.
 A group's endpoint lists every member's tool as `<server>__<tool>`, read live from the servers.
 
 Every tool call, with its arguments and result, is recorded and browsable in the web UI.
@@ -39,8 +39,7 @@ docker run -d --name bangle -p 127.0.0.1:7060:7060 \
 ```
 
 Keep that `SECRETS_KEY`: the container needs the same one every time it starts. The `127.0.0.1:` in `-p`
-is what keeps Bangle off your network. Add `-e BASE_URL=…` if you reach it through a proxy, or
-`-e CONTEXT7_API_KEY=…`.
+is what keeps Bangle off your network. Add `-e BASE_URL=…` if you reach it through a proxy.
 
 **From source,** in tmux:
 
@@ -70,7 +69,6 @@ All settings are environment variables; `.env.example` describes each one.
 | `DB_PATH` | The SQLite file. Everything Bangle knows is in it. |
 | `BASE_URL` | What you open in the browser, e.g. `http://127.0.0.1:7060`. Upstream OAuth redirects come back to `BASE_URL/oauth/upstream/callback`. If a provider insists on https, put a local TLS proxy such as Caddy in front and use its origin. |
 | `SECRETS_KEY` | Seals tokens and keys in the DB. Losing it means logging in to every server again. |
-| `CONTEXT7_API_KEY` | Optional: lets the Add page find a server's MCP URL by name. |
 
 ## Using it
 

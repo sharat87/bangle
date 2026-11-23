@@ -36,7 +36,6 @@ type fakeUpstream struct {
 	issueRefresh bool  // issue refresh tokens
 	rotate       bool  // rotate the refresh token on every refresh
 	expiresIn    int64 // expires_in for every access token
-	clientSecret string
 
 	mu            sync.Mutex
 	codes         map[string]fakeGrant
@@ -174,11 +173,6 @@ func (f *fakeUpstream) token(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if f.clientSecret != "" && r.PostForm.Get("client_secret") != f.clientSecret {
-		w.WriteHeader(http.StatusUnauthorized)
-		writeTestJSON(w, map[string]string{"error": "invalid_client"})
-		return
-	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	invalidGrant := func() {
@@ -271,7 +265,7 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	base, _ := url.Parse("http://bangle.test")
-	return New(database, "127.0.0.1:7060", base, http.Dir(t.TempDir()), box, "test-context7-key", Build{Commit: "0123456789abcdef"})
+	return New(database, "127.0.0.1:7060", base, http.Dir(t.TempDir()), box, Build{Commit: "0123456789abcdef"})
 }
 
 // call sends one request to the server as a same-origin browser would.
@@ -633,34 +627,6 @@ func TestExpiredWithoutRefreshToken(t *testing.T) {
 	}
 }
 
-// A pre-registered client skips DCR and presents its secret.
-func TestPreRegisteredClient(t *testing.T) {
-	f := newFakeUpstream(t)
-	f.clientSecret = "s3cret"
-	s := newTestServer(t)
-	addServer(t, s, map[string]string{"name": "fake", "url": f.srv.URL + "/mcp", "client_id": "app-1", "client_secret": "s3cret"})
-	login(t, s, "fake")
-	if f.registered != 0 || f.lastAuthorize.Get("client_id") != "app-1" {
-		t.Fatalf("registered %d, authorize %v", f.registered, f.lastAuthorize)
-	}
-	if st := serverStatusOf(t, s, "fake"); st.Status != "connected" || !st.HasClientSecret {
-		t.Fatalf("status = %+v", st)
-	}
-	f.revokeAccess()
-	mustListEcho(t, s, "fake") // the refresh presents the secret too
-
-	var stored string
-	if err := s.db.QueryRow(`SELECT client_secret FROM servers`).Scan(&stored); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(stored, "s3cret") {
-		t.Fatal("client secret stored in the clear")
-	}
-	if w := call(t, s, "GET", "/api/servers", nil); strings.Contains(w.Body.String(), "s3cret") {
-		t.Fatal("client secret returned by the API")
-	}
-}
-
 // A failed connect is recorded and shown as the server's status.
 func TestConnectFailureIsShown(t *testing.T) {
 	open := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
@@ -720,7 +686,6 @@ func TestServerValidation(t *testing.T) {
 		{"duplicate", map[string]string{"name": "linear", "url": "https://x.example"}, http.StatusConflict},
 		{"plain http", map[string]string{"name": "x", "url": "http://x.example/mcp"}, http.StatusBadRequest},
 		{"not a URL", map[string]string{"name": "x", "url": "mcp.linear.app"}, http.StatusBadRequest},
-		{"secret without id", map[string]string{"name": "x", "url": "https://x.example", "client_secret": "s"}, http.StatusBadRequest},
 		{"unknown field", map[string]string{"name": "x", "url": "https://x.example", "scope": "a"}, http.StatusBadRequest},
 	}
 	for _, c := range cases {

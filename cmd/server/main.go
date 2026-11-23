@@ -63,20 +63,12 @@ func main() {
 		log.Fatalf("BASE_URL must be a bare http(s) origin like https://7060.port.localhost, got %q", baseURL)
 	}
 
-	// Seals the upstream tokens and client secrets in the DB
+	// Seals the upstream tokens in the DB
 	// (internal/server/secretbox.go). Checked here so a missing or malformed
 	// key stops the boot, not the first login.
 	box, err := server.NewSecretBox(os.Getenv("SECRETS_KEY"))
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	// Context7 answers the Add page's "find the URL for a server by name"
-	// (internal/server/lookup.go). Optional: without a key that feature is
-	// off, said once here, and the Add page doesn't offer it.
-	context7Key := os.Getenv("CONTEXT7_API_KEY")
-	if context7Key == "" {
-		log.Print("CONTEXT7_API_KEY is not set: finding a server's URL by name is off")
 	}
 
 	// The commit this build is from, for the UI's footer. `go build` stamps
@@ -100,7 +92,7 @@ func main() {
 		log.Fatalf("running migrations: %v", err)
 	}
 
-	srv := server.New(database, *listen, u, static, box, context7Key, build)
+	srv := server.New(database, *listen, u, static, box, build)
 
 	log.Printf("Bangle %s listening on http://%s, accessed as %s", build, *listen, baseURL)
 	httpServer := &http.Server{

@@ -28,8 +28,8 @@ import (
 //     /.well-known/oauth-protected-resource[/path]. That names the
 //     authorization server, whose RFC 8414 (else OIDC) metadata gives the
 //     endpoints.
-//  2. Client: the server's pre-registered client id/secret, else RFC 7591
-//     dynamic client registration as a public client, fresh per login.
+//  2. Client: RFC 7591 dynamic client registration as a public client,
+//     fresh per login.
 //  3. POST /oauth/upstream/start (the Connect form) answers 303 to the
 //     authorization endpoint, with PKCE S256 and state.
 //  4. GET /oauth/upstream/callback, the one fixed redirect URI for every
@@ -58,13 +58,12 @@ type protectedResourceMeta struct {
 }
 
 type authServerMeta struct {
-	Issuer                            string   `json:"issuer"`
-	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
-	TokenEndpoint                     string   `json:"token_endpoint"`
-	RegistrationEndpoint              string   `json:"registration_endpoint"`
-	ScopesSupported                   []string `json:"scopes_supported"`
-	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
-	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
+	Issuer                        string   `json:"issuer"`
+	AuthorizationEndpoint         string   `json:"authorization_endpoint"`
+	TokenEndpoint                 string   `json:"token_endpoint"`
+	RegistrationEndpoint          string   `json:"registration_endpoint"`
+	ScopesSupported               []string `json:"scopes_supported"`
+	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported"`
 }
 
 // discovered is everything step 1 learns about a server.
@@ -299,33 +298,12 @@ type oauthClient struct {
 	AuthMethod string
 }
 
-// clientFor is step 2: the server's pre-registered client, else a freshly
-// registered public one.
-func (s *Server) clientFor(ctx context.Context, row serverRow, as authServerMeta, scopes []string) (oauthClient, error) {
-	if row.ClientID != "" {
-		c := oauthClient{ID: row.ClientID, AuthMethod: "none"}
-		if row.ClientSecret != "" {
-			secret, err := s.box.open(row.ClientSecret)
-			if err != nil {
-				return oauthClient{}, fmt.Errorf("client secret: %w", err)
-			}
-			c.Secret = secret
-			c.AuthMethod = secretAuthMethod(as.TokenEndpointAuthMethodsSupported, "")
-		}
-		return c, nil
-	}
-	return registerClient(ctx, s.upstream, as.RegistrationEndpoint, s.baseURL+upstreamCallbackPath, scopes)
-}
-
 // secretAuthMethod picks how to present a client secret: what registration
-// said if it said something usable, else client_secret_post when the AS
-// lists it, else client_secret_basic, RFC 8414's default.
-func secretAuthMethod(supported []string, registered string) string {
+// said if it said something usable, else client_secret_basic, RFC 8414's
+// default.
+func secretAuthMethod(registered string) string {
 	if registered == "client_secret_post" || registered == "client_secret_basic" {
 		return registered
-	}
-	if slices.Contains(supported, "client_secret_post") {
-		return "client_secret_post"
 	}
 	return "client_secret_basic"
 }
@@ -334,7 +312,7 @@ func secretAuthMethod(supported []string, registered string) string {
 // (PKCE, no secret) with the one fixed redirect URI.
 func registerClient(ctx context.Context, client *http.Client, endpoint, redirectURI string, scopes []string) (oauthClient, error) {
 	if endpoint == "" {
-		return oauthClient{}, errors.New("the authorization server has no dynamic client registration: set a pre-registered client id on this server")
+		return oauthClient{}, errors.New("the authorization server has no dynamic client registration, which Bangle needs")
 	}
 	payload := map[string]any{
 		"client_name":                "Bangle",
@@ -383,7 +361,7 @@ func registerClient(ctx context.Context, client *http.Client, endpoint, redirect
 	// Some servers issue a secret even to a client that asked to be public.
 	if reg.ClientSecret != "" {
 		c.Secret = reg.ClientSecret
-		c.AuthMethod = secretAuthMethod(nil, reg.TokenEndpointAuthMethod)
+		c.AuthMethod = secretAuthMethod(reg.TokenEndpointAuthMethod)
 	}
 	return c, nil
 }
@@ -487,7 +465,7 @@ func (s *Server) startLogin(ctx context.Context, row serverRow) (string, error) 
 		return "", err
 	}
 	scopes := chooseScopes(row.Scopes, d)
-	client, err := s.clientFor(ctx, row, d.AS, scopes)
+	client, err := registerClient(ctx, s.upstream, d.AS.RegistrationEndpoint, s.baseURL+upstreamCallbackPath, scopes)
 	if err != nil {
 		return "", err
 	}

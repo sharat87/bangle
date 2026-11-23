@@ -18,7 +18,7 @@ import (
 // resource-shaped by name, which is also the tool prefix and the UI's URL:
 //
 //	GET    /api/servers               list, with each one's login status
-//	POST   /api/servers               add: {name, url, scopes, client_id, client_secret}
+//	POST   /api/servers               add: {name, url, scopes}
 //	GET    /api/servers/{name}        one
 //	PATCH  /api/servers/{name}        rename {name}; the login is kept
 //	DELETE /api/servers/{name}        delete, with its login
@@ -35,20 +35,18 @@ import (
 var validServerName = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 
 type serverRow struct {
-	ID           int64
-	Name         string
-	URL          string
-	Scopes       string // space-separated; "" means the resource's scopes_supported
-	ClientID     string // "" means dynamic client registration
-	ClientSecret string // sealed when not ""
-	AuthError    string
+	ID        int64
+	Name      string
+	URL       string
+	Scopes    string // space-separated; "" means the resource's scopes_supported
+	AuthError string
 }
 
-const serverColumns = `id, name, url, scopes, client_id, client_secret, auth_error`
+const serverColumns = `id, name, url, scopes, auth_error`
 
 func scanServer(row interface{ Scan(...any) error }) (serverRow, error) {
 	var s serverRow
-	err := row.Scan(&s.ID, &s.Name, &s.URL, &s.Scopes, &s.ClientID, &s.ClientSecret, &s.AuthError)
+	err := row.Scan(&s.ID, &s.Name, &s.URL, &s.Scopes, &s.AuthError)
 	return s, err
 }
 
@@ -69,14 +67,11 @@ func (s *Server) serverByID(ctx context.Context, id int64) (serverRow, bool, err
 	return row, err == nil, err
 }
 
-// serverJSON is a server as the API shows it. Secrets never appear: only
-// whether a client secret is configured.
+// serverJSON is a server as the API shows it. Tokens never appear.
 type serverJSON struct {
-	Name            string `json:"name"`
-	URL             string `json:"url"`
-	Scopes          string `json:"scopes"`
-	ClientID        string `json:"client_id"`
-	HasClientSecret bool   `json:"has_client_secret"`
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Scopes string `json:"scopes"`
 	// Status is "connected", "needs_login" or "error" (see serverStatus).
 	Status string `json:"status"`
 	Error  string `json:"error"`
@@ -109,12 +104,10 @@ func serverStatus(authError string, hasToken bool) string {
 
 func (s *Server) serverJSON(ctx context.Context, row serverRow) (serverJSON, error) {
 	out := serverJSON{
-		Name:            row.Name,
-		URL:             row.URL,
-		Scopes:          row.Scopes,
-		ClientID:        row.ClientID,
-		HasClientSecret: row.ClientSecret != "",
-		Error:           row.AuthError,
+		Name:   row.Name,
+		URL:    row.URL,
+		Scopes: row.Scopes,
+		Error:  row.AuthError,
 	}
 	tok, ok, err := s.loadToken(ctx, row.ID)
 	if err != nil {
@@ -221,11 +214,9 @@ func (s *Server) listServers(w http.ResponseWriter, r *http.Request) {
 }
 
 type createServerRequest struct {
-	Name         string `json:"name"`
-	URL          string `json:"url"`
-	Scopes       string `json:"scopes"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Scopes string `json:"scopes"`
 }
 
 func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
@@ -244,23 +235,9 @@ func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "url: "+err.Error())
 		return
 	}
-	clientID := strings.TrimSpace(req.ClientID)
-	clientSecret := strings.TrimSpace(req.ClientSecret)
-	if clientSecret != "" && clientID == "" {
-		writeJSONError(w, http.StatusBadRequest, "a client secret needs a client id")
-		return
-	}
-	sealedSecret := ""
-	if clientSecret != "" {
-		var err error
-		if sealedSecret, err = s.box.seal(clientSecret); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
 	_, err := s.db.ExecContext(r.Context(),
-		`INSERT INTO servers (name, url, scopes, client_id, client_secret) VALUES (?, ?, ?, ?, ?)`,
-		name, serverURL, strings.Join(strings.Fields(req.Scopes), " "), clientID, sealedSecret)
+		`INSERT INTO servers (name, url, scopes) VALUES (?, ?, ?)`,
+		name, serverURL, strings.Join(strings.Fields(req.Scopes), " "))
 	if isUniqueViolation(err) {
 		writeJSONError(w, http.StatusConflict, fmt.Sprintf("a server named %q already exists", name))
 		return

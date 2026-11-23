@@ -5,9 +5,9 @@ Notion, PostHog, Railway, WordPress.com, …), and exposes **groups** of those s
 one per project. Every agent harness (Claude Code, Pi, Codex, …) points at its project's group instead
 of doing its own OAuth per server.
 
-It replaces a stock MCPJungle 0.4.7 setup that worked but was half-built. `docs/mcpjungle-notes.md`
-records what went wrong there and which alternatives were rejected. Read it before re-litigating
-"why not just use X".
+It replaces a stock MCPJungle 0.4.7 setup that worked but was half-built: tool lists were snapshots
+taken at registration (#260), a fresh MCP server per request broke sessions (#268), and its config was
+one-shot JSON files.
 
 ## Working philosophy
 
@@ -57,9 +57,10 @@ records what went wrong there and which alternatives were rejected. Read it befo
 - **Tool names are `<server>__<tool>`,** the convention MCPJungle used. They're what the harness
   lists and calls. Server names are `[a-z0-9-]+`, are shown in the UI, and can be renamed.
   A rename changes tool names and keeps the stored OAuth token, so you don't approve the login again.
-- **One redirect URI for every upstream login:** `BASE_URL` + `/oauth/upstream/callback`. A fixed URI
-  is what lets a pre-registered OAuth app work. GitHub has no dynamic client registration and is
-  deliberately not used (agents use `gh`), but other providers may need one.
+- **One redirect URI for every upstream login:** `BASE_URL` + `/oauth/upstream/callback`.
+- **Upstream logins need dynamic client registration** (RFC 7591). Pre-registered clients
+  (a client id and sealed secret per server) were supported and removed on 2026-11-23: no server
+  used one. GitHub has no DCR and is deliberately not used (agents use `gh`).
 - **Upstream servers are remote only: streamable HTTP with an OAuth login.** One that answers an
   unauthenticated request with anything but 401 is refused at Connect. Local (stdio) servers were
   supported, with sealed per-server environment variables and an allowlisted environment, and
@@ -94,8 +95,7 @@ How Bangle logs in to a server (`upstream_oauth.go`), all of it in my browser fr
    (path-inserted, then root). The first `authorization_servers` entry's metadata is RFC 8414, else OIDC
    (path-inserted), else OIDC path-appended. Its `issuer` must match. Every discovered URL must be https,
    or http to localhost.
-2. **Client.** The server's pre-registered client id (and sealed secret), else RFC 7591 DCR as a public
-   client, fresh per login.
+2. **Client.** RFC 7591 DCR as a public client, fresh per login. An AS without DCR is refused.
 3. **Scopes.** The configured ones, else the resource's `scopes_supported`. Add `offline_access` whenever
    the AS lists it, and with it `prompt=consent` (OIDC Core §11: without it, an OIDC AS like Railway's
    ignores `offline_access` and issues no refresh token).
@@ -203,22 +203,6 @@ way it logs in to any remote MCP server:
 - `GET /api/calls?server=&group=&client=&before=<id>` lists calls newest first, without contents, a
   page of 100; `GET /api/calls/{id}` is one call with arguments and result.
 
-## Finding a server's URL by name (`lookup.go`)
-
-Only with `CONTEXT7_API_KEY` set (it's optional). The Add page's "Find the URL" asks `GET /api/lookup?name=linear`. Context7 doesn't answer with one
-URL, whatever the prompt says, so Bangle decides:
-
-- Two phrasings go to Context7's `/api/v3/search` with `type=json`. Its snippets are vendors' docs,
-  each with its source page.
-- Every https URL in them that mentions `mcp` is a candidate. URLs with a query or fragment and `/sse`
-  endpoints are dropped. So is any URL where neither it nor its source contains the name's first word,
-  which removes the MCP spec's example servers.
-- **Verified** means the URL is on the same domain as a source page (`mcp.linear.app` from
-  `linear.app`). Verified URLs rank first, then by mentions. Up to 6 are checked with `discover`, and
-  only those that pass are returned.
-- The result only prefills the form, as radio buttons with their sources. An unverified URL is shown as
-  one to check. Context7 doesn't know WordPress.com's or Atlassian's server; you enter those by hand.
-
 ## UI pages
 
 - `/` MCP servers (table: status, live tool count, actions), `/add`, `/servers/<name>` (with its groups
@@ -319,8 +303,7 @@ The server runs in tmux as me, started by `make` (`scripts/serve.sh`):
 | --- | --- | --- |
 | `DB_PATH` | yes | SQLite file, relative to the repo root. Locally it's `.data/bangle.db`, which is gitignored. |
 | `BASE_URL` | yes | What the app is accessed as, as a bare http(s) origin. `.env.example` has `http://127.0.0.1:7060`; mine is `https://7060.port.localhost` (Caddy, below). It's the only non-loopback `Host` the request guard accepts, and the origin every absolute URL is built from (OAuth redirect URIs, resource metadata). It's never taken from the request's `Host`. |
-| `SECRETS_KEY` | yes | 32 random bytes, base64 (`openssl rand -base64 32`). Upstream tokens and client secrets are AES-256-GCM sealed under it (`secretbox.go`). Losing it means connecting every server again. |
-| `CONTEXT7_API_KEY` | no | Context7's API key, for finding a server's URL by name on the Add page (`lookup.go`). Without it the boot log says so, `/api/health`'s `lookup` is false, the Add page offers no lookup, and `/api/lookup` is 404. |
+| `SECRETS_KEY` | yes | 32 random bytes, base64 (`openssl rand -base64 32`). Upstream tokens (and any client secret DCR issued) are AES-256-GCM sealed under it (`secretbox.go`). Losing it means connecting every server again. |
 
 The listen address is a flag, `-listen`, defaulting to `127.0.0.1:7060`. Caddy, set up for `*.port.localhost`,
 terminates TLS for `https://7060.port.localhost` and forwards to it. Some OAuth
@@ -387,7 +370,6 @@ Backend:
 - `internal/server/harness_oauth.go`: Bangle as AS for harnesses: metadata, DCR, authorize, consent,
   token, the gateway's bearer check, and the clients API (`/api/clients`).
 - `internal/server/audit.go`: the tool call audit, its pruning, and `/api/calls`.
-- `internal/server/lookup.go`: `/api/lookup`, finding a server's URL by name through Context7.
 - `internal/server/upstream_test.go`: upstream OAuth against `fakeUpstream`, an httptest MCP server
   plus its AS.
 - `internal/server/gateway_test.go`: groups, the gateway, harness OAuth (with the go-sdk's own OAuth
@@ -417,9 +399,9 @@ Frontend:
 - Migrations only add. To retire a column, stop using it in one commit and drop it in a later one.
   `001_init.sql` is the whole schema as of the first public commit (earlier migrations were squashed
   into it); every change after it is a new file.
-- Secrets (upstream access/refresh tokens, client secrets) are stored sealed, never returned by any
+- Secrets (upstream access/refresh tokens, DCR-issued client secrets) are stored sealed, never returned by any
   endpoint, and never logged.
-- `servers` holds a server's config (URL, scopes, client) and `auth_error`. `server_tokens`
+- `servers` holds a server's config (URL, scopes) and `auth_error`. `server_tokens`
   holds its login, one row per server, keyed by id so a rename keeps it.
 - `groups` and `group_servers`; `harness_clients` (registrations) and `harness_grants` (one per
   approval, token hashes only); `tool_calls` (the audit, arguments and results sealed, 90 days).

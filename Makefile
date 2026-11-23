@@ -15,7 +15,6 @@ dev-server: build-frontend
 	@mkdir -p .data
 	@test -f .data/dev.key || openssl rand -base64 32 > .data/dev.key
 	DB_PATH=.data/dev.db BASE_URL=http://127.0.0.1:7061 SECRETS_KEY="$$(cat .data/dev.key)" \
-		CONTEXT7_API_KEY="$$(if [ -f .env ]; then . ./.env; fi; echo $${CONTEXT7_API_KEY:-})" \
 		go run -buildvcs=true ./cmd/server -listen 127.0.0.1:7061
 
 fmt:
